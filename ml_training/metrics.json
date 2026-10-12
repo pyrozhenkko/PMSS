@@ -1,0 +1,39 @@
+{
+  "accuracy": 0.996874988079071,
+  "tflite_accuracy": 0.996875,
+  "test_size": 1600,
+  "labels": [
+    "CLOSED",
+    "FLICKER",
+    "OPENED",
+    "TAMPERING"
+  ],
+  "confusion_matrix": [
+    [
+      383,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      423,
+      0,
+      1
+    ],
+    [
+      0,
+      1,
+      417,
+      0
+    ],
+    [
+      0,
+      1,
+      1,
+      372
+    ]
+  ],
+  "model_bytes": 7264,
+  "tensorflow": "2.21.0"
+}

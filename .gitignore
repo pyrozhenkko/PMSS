@@ -1,0 +1,26 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Logs
+*.log
+
+# Signing / Firebase secrets
+*.jks
+*.keystore
+google-services.json
+
+# Python (ml_training)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
