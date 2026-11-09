@@ -4,12 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -17,8 +18,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -26,21 +25,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.lab1.sensor.LightSensorManager
-import com.example.lab1.ui.SensorViewModel
-import com.example.lab1.ui.screens.AnalyticsScreen
-import com.example.lab1.ui.screens.BleScreen
-import com.example.lab1.ui.screens.ControlScreen
-import com.example.lab1.ui.screens.MonitorScreen
+import com.example.lab1.analytics.AnalyticsScreen
+import com.example.lab1.analytics.AnalyticsViewModel
+import com.example.lab1.ble.BleScreen
+import com.example.lab1.ble.BleViewModel
+import com.example.lab1.control.ControlScreen
+import com.example.lab1.control.ControlViewModel
+import com.example.lab1.monitor.MonitorAction
+import com.example.lab1.monitor.MonitorScreen
+import com.example.lab1.monitor.MonitorViewModel
+import com.example.lab1.scenarios.ScenariosScreen
+import com.example.lab1.scenarios.ScenariosViewModel
 
 class MainActivity : ComponentActivity() {
+    // The same ViewModels survive a screen rotation
+    private val monitorVm: MonitorViewModel by viewModels { MonitorViewModel.Factory }
+    private val bleVm: BleViewModel by viewModels { BleViewModel.Factory }
+    private val controlVm: ControlViewModel by viewModels { ControlViewModel.Factory }
+    private val analyticsVm: AnalyticsViewModel by viewModels { AnalyticsViewModel.Factory }
+    private val scenariosVm: ScenariosViewModel by viewModels { ScenariosViewModel.Factory }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -50,71 +55,37 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    SafeBoxGuardianScreen()
+                    SafeBoxTabs(monitorVm, bleVm, controlVm, analyticsVm, scenariosVm)
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        monitorVm.onAction(MonitorAction.Start)    // the screen is visible → listen to the sensor
+    }
+
+    override fun onPause() {
+        monitorVm.onAction(MonitorAction.Stop)     // the screen is hidden → unregister, save the battery
+        super.onPause()
     }
 }
 
-private val TABS = listOf("Monitor", "BLE", "Control", "Analytics")
+// Lab 7: the main screen became the Dashboard, the user rules got their own tab
+private val TABS = listOf("Dashboard", "BLE", "Control", "Analytics", "Scenarios")
 
-/**
- * Root screen: owns the sensor subscription (strictly tied to the lifecycle)
- * and switches between the tabs. All state lives in SensorViewModel.
- */
+/** Switches between the screens; every screen takes its State from its own ViewModel. */
 @Composable
-fun SafeBoxGuardianScreen(viewModel: SensorViewModel = viewModel(factory = SensorViewModel.Factory)) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val bleState by viewModel.bleState.collectAsStateWithLifecycle()
-    val terminalLog by viewModel.terminalLog.collectAsStateWithLifecycle()
-    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
-    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
-    val controlState by viewModel.controlState.collectAsStateWithLifecycle()
-    val actuatorState by viewModel.actuatorState.collectAsStateWithLifecycle()
-    val chartRecords by viewModel.chartRecords.collectAsStateWithLifecycle()
-    val alarmRecords by viewModel.alarmRecords.collectAsStateWithLifecycle()
-    val recordCount by viewModel.recordCount.collectAsStateWithLifecycle()
-    val aiState by viewModel.aiState.collectAsStateWithLifecycle()
+private fun SafeBoxTabs(
+    monitorVm: MonitorViewModel,
+    bleVm: BleViewModel,
+    controlVm: ControlViewModel,
+    analyticsVm: AnalyticsViewModel,
+    scenariosVm: ScenariosViewModel
+) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-
-    // One-shot messages (for example, "No Internet") are shown in a Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(viewModel) {
-        viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
-    }
-
-    val sensorManager = remember { LightSensorManager(context) }
-
-    // Manage sensor listener strictly tied to Activity lifecycle
-    DisposableEffect(lifecycleOwner) {
-        viewModel.onSensorAvailability(sensorManager.isAvailable)
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> {
-                    sensorManager.startListening { newLevel ->
-                        viewModel.onLightChanged(newLevel)
-                    }
-                    viewModel.onSensorListening(true)
-                }
-                Lifecycle.Event.ON_PAUSE -> {
-                    sensorManager.stopListening()
-                    viewModel.onSensorListening(false)
-                }
-                else -> Unit
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            sensorManager.stopListening()
-        }
-    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -129,7 +100,8 @@ fun SafeBoxGuardianScreen(viewModel: SensorViewModel = viewModel(factory = Senso
                     style = MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(vertical = 12.dp)
                 )
-                PrimaryTabRow(selectedTabIndex = selectedTab) {
+                // Five tabs do not fit the width of a phone, so the row scrolls
+                PrimaryScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
                     TABS.forEachIndexed { index, title ->
                         Tab(
                             selected = selectedTab == index,
@@ -143,40 +115,11 @@ fun SafeBoxGuardianScreen(viewModel: SensorViewModel = viewModel(factory = Senso
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
         when (selectedTab) {
-            0 -> MonitorScreen(
-                state = uiState,
-                syncStatus = syncStatus,
-                isOnline = isOnline,
-                deviceId = viewModel.deviceId,
-                aiState = aiState,
-                onClearLogs = viewModel::clearLogs,
-                modifier = contentModifier
-            )
-            1 -> BleScreen(
-                state = bleState,
-                terminalLog = terminalLog,
-                onScan = viewModel::startScan,
-                onPermissionDenied = viewModel::onBlePermissionDenied,
-                onConnect = viewModel::connect,
-                onDisconnect = viewModel::disconnect,
-                onCommand = viewModel::onBleCommand,
-                modifier = contentModifier
-            )
-            2 -> ControlScreen(
-                state = controlState,
-                actuators = actuatorState,
-                onArmedChange = viewModel::setArmed,
-                onFlashlightChange = viewModel::setManualFlashlight,
-                onAlarmChange = viewModel::setManualAlarm,
-                onResetAlarm = viewModel::resetAlarm,
-                modifier = contentModifier
-            )
-            else -> AnalyticsScreen(
-                chartRecords = chartRecords,
-                alarmRecords = alarmRecords,
-                totalRecords = recordCount,
-                modifier = contentModifier
-            )
+            0 -> MonitorScreen(monitorVm, snackbarHostState, contentModifier)
+            1 -> BleScreen(bleVm, snackbarHostState, contentModifier)
+            2 -> ControlScreen(controlVm, contentModifier)
+            3 -> AnalyticsScreen(analyticsVm, contentModifier)
+            else -> ScenariosScreen(scenariosVm, snackbarHostState, contentModifier)
         }
     }
 }

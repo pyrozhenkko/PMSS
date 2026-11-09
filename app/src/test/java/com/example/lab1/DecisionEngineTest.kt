@@ -1,7 +1,7 @@
 package com.example.lab1
 
-import com.example.lab1.domain.DecisionEngine
-import com.example.lab1.domain.SafeState
+import com.example.lab1.helpers.DecisionEngine
+import com.example.lab1.helpers.SafeState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
